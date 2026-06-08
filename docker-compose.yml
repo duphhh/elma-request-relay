@@ -1,0 +1,8 @@
+services:
+  mail-relay:
+    image: duphhh/elma-request-relay:latest
+    ports:
+      - "3030:3030"
+    env_file:
+      - .env
+    restart: unless-stopped
