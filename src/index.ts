@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import { Agent } from 'undici';
 
 const app = express();
 
@@ -20,6 +21,20 @@ const ALLOWED_METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'
 
 // Заголовки, которые нельзя пробрасывать как есть
 const HOP_BY_HOP = new Set(['host', 'content-length', 'connection']);
+
+// Для «капризных» серверов (старый TLS-стек, самоподписанный сертификат):
+// при LEGACY_TLS=1 форсируем TLS 1.2 и не проверяем сертификат —
+// поведение, аналогичное curl --tlsv1.2 -k.
+const legacyDispatcher =
+    process.env.LEGACY_TLS === '1'
+        ? new Agent({
+              connect: {
+                  rejectUnauthorized: false,
+                  minVersion: 'TLSv1.2',
+                  maxVersion: 'TLSv1.2',
+              },
+          })
+        : undefined;
 
 interface ForwardBody {
     method?: string;
@@ -77,11 +92,15 @@ app.post('/forward', async (req: Request, res: Response) => {
         }
     }
 
-    const fetchOptions: RequestInit = {
+    const fetchOptions: RequestInit & { dispatcher?: Agent } = {
         method: upperMethod,
         headers: outHeaders,
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     };
+
+    if (legacyDispatcher) {
+        fetchOptions.dispatcher = legacyDispatcher;
+    }
 
     // Тело только для методов, которые его допускают
     if (upperMethod !== 'GET' && upperMethod !== 'HEAD' && body !== undefined && body !== null) {
@@ -141,7 +160,7 @@ app.post('/forward', async (req: Request, res: Response) => {
 });
 
 // Простой health-check
-app.get('/healthz', (_req: Request, res: Response) => {
+app.get('/health', (_req: Request, res: Response) => {
     res.json({ status: 'ok' });
 });
 
