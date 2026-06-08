@@ -120,14 +120,22 @@ app.post('/forward', async (req: Request, res: Response) => {
     } catch (error) {
         const name = (error as { name?: string })?.name;
         const isTimeout = name === 'TimeoutError' || name === 'AbortError';
-        const details = error instanceof Error ? error.message : String(error);
 
-        console.error('Ошибка при переотправке запроса:', error);
+        // У fetch реальная причина лежит в error.cause
+        const cause = (error as { cause?: unknown })?.cause;
+        const details = error instanceof Error ? error.message : String(error);
+        const causeMessage =
+            cause instanceof Error ? cause.message : cause ? String(cause) : undefined;
+        const code = (cause as { code?: string })?.code;
+
+        console.error('Ошибка при переотправке запроса:', error, cause ?? '');
         res.status(isTimeout ? 504 : 502).json({
             error: isTimeout
                 ? 'Таймаут при обращении к целевому серверу'
                 : 'Ошибка проксирования',
             details,
+            cause: causeMessage,
+            code,
         });
     }
 });
